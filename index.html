@@ -16,7 +16,7 @@
 <body>
   <div id="root"></div>
   <script type="text/babel">
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useMemo, useRef } = React;
 
     const MBP_GRADES = [
       { grade: 'V0', color: '#F4E03C', textColor: '#000', value: 0 },
@@ -139,9 +139,16 @@
       const [dateRangeEnd, setDateRangeEnd] = useState('');
       const [showAddForm, setShowAddForm] = useState(false);
       const [sortBy, setSortBy] = useState('dateAdded');
+      const saveTimeoutRef = useRef(null);
 
       useEffect(() => { const saved = localStorage.getItem('mbp-boulders-v2'); if (saved) setBoulders(JSON.parse(saved)); }, []);
-      useEffect(() => { localStorage.setItem('mbp-boulders-v2', JSON.stringify(boulders)); }, [boulders]);
+      useEffect(() => {
+        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = setTimeout(() => {
+          localStorage.setItem('mbp-boulders-v2', JSON.stringify(boulders));
+        }, 300);
+        return () => clearTimeout(saveTimeoutRef.current);
+      }, [boulders]);
 
       const addBoulder = (grade) => {
         const newBoulder = { id: Date.now(), name: '', grade, attempts: 0, completed: false, flash: false, notes: '', dateAdded: new Date().toISOString(), dateCompleted: null, sessions: [], status: 'active' };
@@ -168,8 +175,8 @@
       const isClosed = (boulder) => getProjectStatus(boulder) === 'closed';
       const formatDate = (isoString) => new Date(isoString).toLocaleDateString();
 
-      const projects = boulders.filter(b => !b.completed);
-      const completed = boulders.filter(b => b.completed);
+      const projects = useMemo(() => boulders.filter(b => !b.completed), [boulders]);
+      const completed = useMemo(() => boulders.filter(b => b.completed), [boulders]);
 
       const getSortedProjects = (arr) => [...arr].sort((a, b) => {
         if (sortBy === 'dateAdded') return new Date(b.dateAdded) - new Date(a.dateAdded);
@@ -178,13 +185,13 @@
         return 0;
       });
 
-      const filteredProjects = getSortedProjects(projects.filter(b => {
+      const filteredProjects = useMemo(() => getSortedProjects(projects.filter(b => {
         const matchesSearch = !projectFilter || (b.name && b.name.toLowerCase().includes(projectFilter.toLowerCase())) || (b.notes && b.notes.toLowerCase().includes(projectFilter.toLowerCase()));
         const matchesStatus = projectStatusFilter === 'all' || getProjectStatus(b) === projectStatusFilter;
         return matchesSearch && matchesStatus && (projectGradeFilter === 'all' || b.grade === projectGradeFilter);
-      }));
+      })), [projects, projectFilter, projectGradeFilter, projectStatusFilter, sortBy]);
 
-      const filteredCompleted = completed.filter(b => {
+      const filteredCompleted = useMemo(() => completed.filter(b => {
         const matchesSearch = !completedFilter || (b.name && b.name.toLowerCase().includes(completedFilter.toLowerCase())) || (b.notes && b.notes.toLowerCase().includes(completedFilter.toLowerCase()));
         const matchesFlash = completedFlashFilter === 'all' || (completedFlashFilter === 'flash' && b.flash) || (completedFlashFilter === 'send' && !b.flash);
         if (dateRangeStart && dateRangeEnd) {
@@ -193,7 +200,7 @@
           return matchesSearch && matchesFlash && bd >= sd && bd <= ed;
         }
         return matchesSearch && matchesFlash;
-      }).sort((a, b) => new Date(b.dateCompleted) - new Date(a.dateCompleted));
+      }).sort((a, b) => new Date(b.dateCompleted) - new Date(a.dateCompleted)), [completed, completedFilter, completedFlashFilter, dateRangeStart, dateRangeEnd]);
 
       const getProgressData = () => {
         const monthlyData = {};
