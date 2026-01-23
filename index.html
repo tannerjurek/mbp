@@ -291,6 +291,18 @@
                         <div className="grid grid-cols-3 gap-2">{MBP_GRADES.map(({ grade, color, textColor }) => <button key={grade} onClick={() => addBoulder(grade)} style={{ backgroundColor: color, color: textColor }} className="py-4 rounded-lg font-bold hover:scale-105 transition">{grade}</button>)}</div>
                       </div>
                     )}
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {[
+                        { label: 'Active', value: 'active' },
+                        { label: 'Paused', value: 'paused' },
+                        { label: 'Unfinished', value: 'abandoned' },
+                        { label: 'All', value: 'all' }
+                      ].map(option => (
+                        <button key={option.value} onClick={() => setProjectStatusFilter(option.value)} className={`px-3 py-1.5 rounded-full text-sm font-semibold transition ${projectStatusFilter === option.value ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
                     {filteredProjects.length > 0 && (
                       <details className="bg-slate-800 rounded-xl mb-4"><summary className="cursor-pointer p-4 text-sm font-semibold text-slate-300 hover:text-white">Filters & Sort</summary>
                         <div className="px-4 pb-4 space-y-3">
