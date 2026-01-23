@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MBP Boulder Tracker</title>
+  <title>Boulder Tracker</title>
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -271,6 +271,9 @@
                         <div className="grid grid-cols-2 gap-4 mb-6">
                           <button onClick={() => { markComplete(boulder.id, false); setFocusedBoulder(null); }} className="bg-green-600 hover:bg-green-700 px-6 py-4 rounded-xl text-lg font-semibold">✓ Sent!</button>
                           <button onClick={() => { markComplete(boulder.id, true); setFocusedBoulder(null); }} disabled={boulder.attempts > 0 || boulder.sessions.length > 0} className={`px-6 py-4 rounded-xl text-lg font-semibold ${boulder.attempts > 0 || boulder.sessions.length > 0 ? 'bg-slate-600 text-slate-400 cursor-not-allowed' : 'bg-yellow-600 hover:bg-yellow-700'}`}>⚡ Flash!</button>
+                          <button onClick={() => updateBoulder(boulder.id, { status: isClosed(boulder) ? 'active' : 'closed' })} className={`px-6 py-4 rounded-xl text-lg font-semibold ${isClosed(boulder) ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-rose-600 hover:bg-rose-700 text-white'}`}>
+                            {isClosed(boulder) ? 'Reopen Project' : 'Will Not Finish'}
+                          </button>
                         </div>
                         {boulder.sessions.length > 0 && (
                           <details className="mb-6 text-left"><summary className="cursor-pointer text-blue-400 hover:text-blue-300 mb-2 text-sm font-semibold">View Session History</summary>
@@ -313,7 +316,9 @@
                         </div>
                       </details>
                     )}
-                    <h2 className="text-2xl font-bold mb-4">Current Projects</h2>
+                    <h2 className="text-2xl font-bold mb-4">
+                      {projectStatusFilter === 'closed' ? 'Closed Projects' : projectStatusFilter === 'paused' ? 'Paused Projects' : projectStatusFilter === 'all' ? 'All Projects' : 'Active Projects'}
+                    </h2>
                     <div className="space-y-3">
                       {filteredProjects.length === 0 ? <div className="bg-slate-800 rounded-xl p-8 text-center text-slate-400">{projectFilter || projectGradeFilter !== 'all' || projectStatusFilter !== 'active' ? 'No projects match.' : 'No active projects. Add one above!'}</div> : filteredProjects.map(boulder => {
                         const gradeInfo = getGradeColor(boulder.grade);
