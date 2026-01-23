@@ -132,6 +132,7 @@
       const [focusedBoulder, setFocusedBoulder] = useState(null);
       const [projectFilter, setProjectFilter] = useState('');
       const [projectGradeFilter, setProjectGradeFilter] = useState('all');
+      const [projectStatusFilter, setProjectStatusFilter] = useState('active');
       const [completedFilter, setCompletedFilter] = useState('');
       const [completedFlashFilter, setCompletedFlashFilter] = useState('all');
       const [dateRangeStart, setDateRangeStart] = useState('');
@@ -143,7 +144,7 @@
       useEffect(() => { localStorage.setItem('mbp-boulders-v2', JSON.stringify(boulders)); }, [boulders]);
 
       const addBoulder = (grade) => {
-        const newBoulder = { id: Date.now(), name: '', grade, attempts: 0, completed: false, flash: false, notes: '', dateAdded: new Date().toISOString(), dateCompleted: null, sessions: [] };
+        const newBoulder = { id: Date.now(), name: '', grade, attempts: 0, completed: false, flash: false, notes: '', dateAdded: new Date().toISOString(), dateCompleted: null, sessions: [], status: 'active' };
         setBoulders([newBoulder, ...boulders]);
         setFocusedBoulder(newBoulder.id);
         setShowAddForm(false);
@@ -159,6 +160,7 @@
       }));
       const deleteBoulder = (id) => setBoulders(boulders.filter(b => b.id !== id));
       const getGradeColor = (grade) => MBP_GRADES.find(g => g.grade === grade);
+      const getProjectStatus = (boulder) => boulder.status || 'active';
       const formatDate = (isoString) => new Date(isoString).toLocaleDateString();
 
       const projects = boulders.filter(b => !b.completed);
@@ -173,7 +175,8 @@
 
       const filteredProjects = getSortedProjects(projects.filter(b => {
         const matchesSearch = !projectFilter || (b.name && b.name.toLowerCase().includes(projectFilter.toLowerCase())) || (b.notes && b.notes.toLowerCase().includes(projectFilter.toLowerCase()));
-        return matchesSearch && (projectGradeFilter === 'all' || b.grade === projectGradeFilter);
+        const matchesStatus = projectStatusFilter === 'all' || getProjectStatus(b) === projectStatusFilter;
+        return matchesSearch && matchesStatus && (projectGradeFilter === 'all' || b.grade === projectGradeFilter);
       }));
 
       const filteredCompleted = completed.filter(b => {
@@ -262,6 +265,9 @@
                         <div className="text-xl text-slate-400 mb-2">attempt{boulder.attempts !== 1 ? 's' : ''}</div>
                         {boulder.sessions.length > 0 && <div className="text-sm text-slate-500 mb-6">{boulder.sessions.length} session{boulder.sessions.length !== 1 ? 's' : ''} · Last: {formatDate(boulder.sessions[boulder.sessions.length - 1].date)}</div>}
                         <button onClick={() => addAttempts(boulder.id, 1)} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-8 rounded-xl text-2xl mb-4 active:scale-95">+1 Attempt</button>
+                        <button onClick={() => updateBoulder(boulder.id, { status: getProjectStatus(boulder) === 'active' ? 'paused' : 'active' })} className="w-full bg-slate-700 hover:bg-slate-600 text-white font-semibold py-3 rounded-xl text-lg mb-6">
+                          {getProjectStatus(boulder) === 'active' ? 'Pause Project' : 'Resume Project'}
+                        </button>
                         <div className="grid grid-cols-2 gap-4 mb-6">
                           <button onClick={() => { markComplete(boulder.id, false); setFocusedBoulder(null); }} className="bg-green-600 hover:bg-green-700 px-6 py-4 rounded-xl text-lg font-semibold">✓ Sent!</button>
                           <button onClick={() => { markComplete(boulder.id, true); setFocusedBoulder(null); }} disabled={boulder.attempts > 0 || boulder.sessions.length > 0} className={`px-6 py-4 rounded-xl text-lg font-semibold ${boulder.attempts > 0 || boulder.sessions.length > 0 ? 'bg-slate-600 text-slate-400 cursor-not-allowed' : 'bg-yellow-600 hover:bg-yellow-700'}`}>⚡ Flash!</button>
@@ -290,25 +296,34 @@
                         <div className="px-4 pb-4 space-y-3">
                           <input type="text" placeholder="Search..." value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:border-blue-500 focus:outline-none" />
                           <select value={projectGradeFilter} onChange={(e) => setProjectGradeFilter(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"><option value="all">All Grades</option>{MBP_GRADES.map(({ grade }) => <option key={grade} value={grade}>{grade}</option>)}</select>
+                          <select value={projectStatusFilter} onChange={(e) => setProjectStatusFilter(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"><option value="all">All Statuses</option><option value="active">Active</option><option value="paused">Paused</option></select>
                           <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"><option value="dateAdded">Date Added</option><option value="attempts">Most Attempts</option><option value="grade">Hardest First</option></select>
                         </div>
                       </details>
                     )}
                     <h2 className="text-2xl font-bold mb-4">Current Projects</h2>
                     <div className="space-y-3">
-                      {filteredProjects.length === 0 ? <div className="bg-slate-800 rounded-xl p-8 text-center text-slate-400">{projectFilter || projectGradeFilter !== 'all' ? 'No projects match.' : 'No active projects. Add one above!'}</div> : filteredProjects.map(boulder => {
+                      {filteredProjects.length === 0 ? <div className="bg-slate-800 rounded-xl p-8 text-center text-slate-400">{projectFilter || projectGradeFilter !== 'all' || projectStatusFilter !== 'active' ? 'No projects match.' : 'No active projects. Add one above!'}</div> : filteredProjects.map(boulder => {
                         const gradeInfo = getGradeColor(boulder.grade);
                         return (
                           <div key={boulder.id} className="bg-slate-800 rounded-xl p-4 shadow-lg cursor-pointer hover:bg-slate-700 transition" onClick={() => setFocusedBoulder(boulder.id)}>
                             <div className="flex items-start gap-4">
                               <div style={{ backgroundColor: gradeInfo.color, color: gradeInfo.textColor }} className="px-4 py-2 rounded-lg font-bold text-lg shrink-0">{boulder.grade}</div>
                               <div className="flex-1">
-                                {boulder.name && <div className="font-bold text-lg mb-2">{boulder.name}</div>}
+                                <div className="flex items-center gap-2 mb-2">
+                                  {boulder.name && <div className="font-bold text-lg">{boulder.name}</div>}
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${getProjectStatus(boulder) === 'active' ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'}`}>{getProjectStatus(boulder) === 'active' ? 'Active' : 'Paused'}</span>
+                                </div>
                                 <div className="font-semibold text-slate-300 mb-2">{boulder.attempts} attempt{boulder.attempts !== 1 ? 's' : ''}</div>
                                 {boulder.notes && <div className="text-sm text-slate-300 mb-2 line-clamp-2">{boulder.notes}</div>}
                                 <div className="text-xs text-slate-400">Added {formatDate(boulder.dateAdded)}</div>
                               </div>
-                              <div className="text-slate-400 shrink-0">→</div>
+                              <div className="flex flex-col items-end gap-2 shrink-0">
+                                <button onClick={(e) => { e.stopPropagation(); updateBoulder(boulder.id, { status: getProjectStatus(boulder) === 'active' ? 'paused' : 'active' }); }} className="text-xs px-2 py-1 rounded-full bg-slate-700 hover:bg-slate-600 text-slate-200">
+                                  {getProjectStatus(boulder) === 'active' ? 'Pause' : 'Resume'}
+                                </button>
+                                <div className="text-slate-400">→</div>
+                              </div>
                             </div>
                           </div>
                         );
