@@ -160,12 +160,7 @@
       }));
       const deleteBoulder = (id) => setBoulders(boulders.filter(b => b.id !== id));
       const getGradeColor = (grade) => MBP_GRADES.find(g => g.grade === grade);
-      const getProjectStatus = (boulder) => {
-        const status = boulder.status || 'active';
-        if (status === 'abandoned' || status === 'unfinished') return 'closed';
-        return status;
-      };
-      const isClosed = (boulder) => getProjectStatus(boulder) === 'closed';
+      const getProjectStatus = (boulder) => boulder.status || 'active';
       const formatDate = (isoString) => new Date(isoString).toLocaleDateString();
 
       const projects = boulders.filter(b => !b.completed);
@@ -229,7 +224,8 @@
         <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 text-white p-4 pb-8">
           <div className="max-w-6xl mx-auto">
             <header className="text-center mb-6 pt-6">
-              <h1 className="text-4xl font-bold mb-2">Boulder Tracker</h1>
+              <h1 className="text-4xl font-bold mb-2">MBP Boulder Tracker</h1>
+              <p className="text-slate-400">Bouldering Project</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
                 <button onClick={() => setView('projects')} className="bg-slate-800/50 hover:bg-slate-700/50 rounded-lg p-3 text-left">
                   <div className="text-2xl font-bold text-blue-400">{stats.totalProjects}</div><div className="text-xs text-slate-400">Active Projects</div>
@@ -269,12 +265,10 @@
                         <div className="text-xl text-slate-400 mb-2">attempt{boulder.attempts !== 1 ? 's' : ''}</div>
                         {boulder.sessions.length > 0 && <div className="text-sm text-slate-500 mb-6">{boulder.sessions.length} session{boulder.sessions.length !== 1 ? 's' : ''} · Last: {formatDate(boulder.sessions[boulder.sessions.length - 1].date)}</div>}
                         <button onClick={() => addAttempts(boulder.id, 1)} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-8 rounded-xl text-2xl mb-4 active:scale-95">+1 Attempt</button>
-                        {!isClosed(boulder) && (
-                          <button onClick={() => updateBoulder(boulder.id, { status: getProjectStatus(boulder) === 'active' ? 'paused' : 'active' })} className="w-full bg-slate-700 hover:bg-slate-600 text-white font-semibold py-3 rounded-xl text-lg mb-3">
-                            {getProjectStatus(boulder) === 'active' ? 'Pause Project' : 'Resume Project'}
-                          </button>
-                        )}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        <button onClick={() => updateBoulder(boulder.id, { status: getProjectStatus(boulder) === 'active' ? 'paused' : 'active' })} className="w-full bg-slate-700 hover:bg-slate-600 text-white font-semibold py-3 rounded-xl text-lg mb-6">
+                          {getProjectStatus(boulder) === 'active' ? 'Pause Project' : 'Resume Project'}
+                        </button>
+                        <div className="grid grid-cols-2 gap-4 mb-6">
                           <button onClick={() => { markComplete(boulder.id, false); setFocusedBoulder(null); }} className="bg-green-600 hover:bg-green-700 px-6 py-4 rounded-xl text-lg font-semibold">✓ Sent!</button>
                           <button onClick={() => { markComplete(boulder.id, true); setFocusedBoulder(null); }} disabled={boulder.attempts > 0 || boulder.sessions.length > 0} className={`px-6 py-4 rounded-xl text-lg font-semibold ${boulder.attempts > 0 || boulder.sessions.length > 0 ? 'bg-slate-600 text-slate-400 cursor-not-allowed' : 'bg-yellow-600 hover:bg-yellow-700'}`}>⚡ Flash!</button>
                           <button onClick={() => updateBoulder(boulder.id, { status: isClosed(boulder) ? 'active' : 'closed' })} className={`px-6 py-4 rounded-xl text-lg font-semibold ${isClosed(boulder) ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-rose-600 hover:bg-rose-700 text-white'}`}>
@@ -304,7 +298,7 @@
                       {[
                         { label: 'Active', value: 'active' },
                         { label: 'Paused', value: 'paused' },
-                        { label: 'Closed', value: 'closed' },
+                        { label: 'Unfinished', value: 'abandoned' },
                         { label: 'All', value: 'all' }
                       ].map(option => (
                         <button key={option.value} onClick={() => setProjectStatusFilter(option.value)} className={`px-3 py-1.5 rounded-full text-sm font-semibold transition ${projectStatusFilter === option.value ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>
@@ -317,7 +311,7 @@
                         <div className="px-4 pb-4 space-y-3">
                           <input type="text" placeholder="Search..." value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:border-blue-500 focus:outline-none" />
                           <select value={projectGradeFilter} onChange={(e) => setProjectGradeFilter(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"><option value="all">All Grades</option>{MBP_GRADES.map(({ grade }) => <option key={grade} value={grade}>{grade}</option>)}</select>
-                          <select value={projectStatusFilter} onChange={(e) => setProjectStatusFilter(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"><option value="all">All Statuses</option><option value="active">Active</option><option value="paused">Paused</option><option value="closed">Closed</option></select>
+                          <select value={projectStatusFilter} onChange={(e) => setProjectStatusFilter(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"><option value="all">All Statuses</option><option value="active">Active</option><option value="paused">Paused</option></select>
                           <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"><option value="dateAdded">Date Added</option><option value="attempts">Most Attempts</option><option value="grade">Hardest First</option></select>
                         </div>
                       </details>
@@ -335,24 +329,15 @@
                               <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-2">
                                   {boulder.name && <div className="font-bold text-lg">{boulder.name}</div>}
-                                <span className={`text-xs px-2 py-0.5 rounded-full ${getProjectStatus(boulder) === 'active' ? 'bg-green-500/20 text-green-300' : getProjectStatus(boulder) === 'paused' ? 'bg-yellow-500/20 text-yellow-300' : 'bg-rose-500/20 text-rose-300'}`}>{getProjectStatus(boulder) === 'active' ? 'Active' : getProjectStatus(boulder) === 'paused' ? 'Paused' : 'Closed'}</span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${getProjectStatus(boulder) === 'active' ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'}`}>{getProjectStatus(boulder) === 'active' ? 'Active' : 'Paused'}</span>
                                 </div>
                                 <div className="font-semibold text-slate-300 mb-2">{boulder.attempts} attempt{boulder.attempts !== 1 ? 's' : ''}</div>
                                 {boulder.notes && <div className="text-sm text-slate-300 mb-2 line-clamp-2">{boulder.notes}</div>}
                                 <div className="text-xs text-slate-400">Added {formatDate(boulder.dateAdded)}</div>
                               </div>
                               <div className="flex flex-col items-end gap-2 shrink-0">
-                                {!isClosed(boulder) ? (
-                                  <button onClick={(e) => { e.stopPropagation(); updateBoulder(boulder.id, { status: getProjectStatus(boulder) === 'active' ? 'paused' : 'active' }); }} className="text-xs px-2 py-1 rounded-full bg-slate-700 hover:bg-slate-600 text-slate-200">
-                                    {getProjectStatus(boulder) === 'active' ? 'Pause' : 'Resume'}
-                                  </button>
-                                ) : (
-                                  <button onClick={(e) => { e.stopPropagation(); updateBoulder(boulder.id, { status: 'active' }); }} className="text-xs px-2 py-1 rounded-full bg-blue-600 hover:bg-blue-500 text-white">
-                                    Reopen
-                                  </button>
-                                )}
-                                <button onClick={(e) => { e.stopPropagation(); updateBoulder(boulder.id, { status: isClosed(boulder) ? 'active' : 'closed' }); }} className={`text-xs px-2 py-1 rounded-full ${isClosed(boulder) ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' : 'bg-rose-600 hover:bg-rose-500 text-white'}`}>
-                                  {isClosed(boulder) ? 'Restore' : 'Close'}
+                                <button onClick={(e) => { e.stopPropagation(); updateBoulder(boulder.id, { status: getProjectStatus(boulder) === 'active' ? 'paused' : 'active' }); }} className="text-xs px-2 py-1 rounded-full bg-slate-700 hover:bg-slate-600 text-slate-200">
+                                  {getProjectStatus(boulder) === 'active' ? 'Pause' : 'Resume'}
                                 </button>
                                 <div className="text-slate-400">→</div>
                               </div>
