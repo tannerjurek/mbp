@@ -224,15 +224,28 @@
         return { grade, color, sends: gc.length, flashes: gc.filter(b => b.flash).length, avgAttempts: gc.length > 0 ? (gc.reduce((s, b) => s + b.attempts, 0) / gc.length).toFixed(1) : 0 };
       }).filter(d => d.sends > 0);
 
-      const getFlashRate = () => [{ name: 'Flashes', value: completed.filter(b => b.flash).length, color: '#eab308' }, { name: 'Regular Sends', value: completed.filter(b => !b.flash).length, color: '#3b82f6' }];
+      const getFlashRate = () => {
+        const started = boulders.filter(b => b.completed || b.attempts > 0 || b.sessions.length > 0);
+        return [
+          { name: 'Flashes', value: started.filter(b => b.flash).length, color: '#eab308' },
+          { name: 'Regular Sends', value: started.filter(b => !b.flash).length, color: '#3b82f6' }
+        ];
+      };
 
       const stats = (() => {
         const thisMonth = new Date(); thisMonth.setDate(1); thisMonth.setHours(0, 0, 0, 0);
         return {
           totalProjects: projects.length,
           sendsThisMonth: completed.filter(b => new Date(b.dateCompleted) >= thisMonth).length,
-          flashRate: completed.length > 0 ? Math.round((completed.filter(b => b.flash).length / completed.length) * 100) : 0,
-          completionRate: boulders.length > 0 ? Math.round((completed.length / boulders.length) * 100) : 0
+          flashRate: (() => {
+            const started = boulders.filter(b => b.completed || b.attempts > 0 || b.sessions.length > 0);
+            return started.length > 0 ? Math.round((started.filter(b => b.flash).length / started.length) * 100) : 0;
+          })(),
+          completionRate: (() => {
+            const incompleteCount = boulders.filter(b => ['paused', 'closed'].includes(getProjectStatus(b))).length;
+            const trackedCount = completed.length + incompleteCount;
+            return trackedCount > 0 ? Math.round((completed.length / trackedCount) * 100) : 0;
+          })()
         };
       })();
 
@@ -240,7 +253,7 @@
         <div className="min-h-screen bg-black text-white p-4 pb-8">
           <div className="max-w-6xl mx-auto">
             <header className="text-center mb-6 pt-6">
-              <h1 className="text-4xl font-bold mb-2">Boulder Tracker</h1>
+              <button onClick={() => { setView('projects'); setFocusedBoulder(null); }} className="text-4xl font-bold mb-2 hover:text-slate-200 transition" type="button">Boulder Tracker</button>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
                 <button onClick={() => setView('projects')} className="bg-slate-800/50 hover:bg-slate-700/50 backdrop-blur border border-white/5 rounded-lg p-3 text-left">
                   <div className="text-2xl font-bold text-blue-400">{stats.totalProjects}</div><div className="text-xs text-slate-400 secondary-text">Active Projects</div>
