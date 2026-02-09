@@ -219,6 +219,57 @@
         return Object.values(monthlyData).map(d => ({ ...d, avgGrade: (d.totalGradeValue / d.sends).toFixed(1) }));
       };
 
+      const getWeeklySends = () => {
+        const weeklyData = {};
+        completed.forEach(boulder => {
+          const date = new Date(boulder.dateCompleted);
+          const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+          const dayOfWeek = (day.getDay() + 6) % 7;
+          day.setDate(day.getDate() - dayOfWeek);
+          const weekKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+          if (!weeklyData[weekKey]) weeklyData[weekKey] = { week: weekKey, sends: 0 };
+          weeklyData[weekKey].sends++;
+        });
+        return Object.values(weeklyData).sort((a, b) => new Date(a.week) - new Date(b.week));
+      };
+
+      const getAttemptsDistribution = () => {
+        const buckets = [
+          { range: '1', min: 1, max: 1 },
+          { range: '2-3', min: 2, max: 3 },
+          { range: '4-6', min: 4, max: 6 },
+          { range: '7-9', min: 7, max: 9 },
+          { range: '10+', min: 10, max: Infinity }
+        ];
+        return buckets.map(bucket => ({
+          range: bucket.range,
+          count: completed.filter(b => b.attempts >= bucket.min && b.attempts <= bucket.max).length
+        })).filter(bucket => bucket.count > 0);
+      };
+
+      const getTimeToSendDistribution = () => {
+        const buckets = [
+          { range: '0-1d', min: 0, max: 1 },
+          { range: '2-7d', min: 2, max: 7 },
+          { range: '8-30d', min: 8, max: 30 },
+          { range: '31+d', min: 31, max: Infinity }
+        ];
+        return buckets.map(bucket => ({
+          range: bucket.range,
+          count: completed.filter(b => {
+            const start = new Date(b.dateAdded);
+            const end = new Date(b.dateCompleted);
+            const days = Math.max(0, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
+            return days >= bucket.min && days <= bucket.max;
+          }).length
+        })).filter(bucket => bucket.count > 0);
+      };
+
+      const getBacklogRatio = () => [
+        { name: 'Completed', value: completed.length, color: '#22c55e' },
+        { name: 'Projects', value: projects.length, color: '#38bdf8' }
+      ];
+
       const getGradeDistribution = () => MBP_GRADES.map(({ grade, color }) => {
         const gc = completed.filter(b => b.grade === grade);
         return { grade, color, sends: gc.length, flashes: gc.filter(b => b.flash).length, avgAttempts: gc.length > 0 ? (gc.reduce((s, b) => s + b.attempts, 0) / gc.length).toFixed(1) : 0 };
@@ -441,8 +492,13 @@
                       <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 text-center shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><div className="text-4xl font-bold text-yellow-400">{completed.filter(b => b.flash).length}</div><div className="text-slate-400 secondary-text mt-2">Flashes</div></div>
                     </div>
                     <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Flash Rate</h3><SimplePieChart data={getFlashRate()} nameKey="name" valueKey="value" /></div>
+                    <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Completed vs Projects</h3><SimplePieChart data={getBacklogRatio()} nameKey="name" valueKey="value" /></div>
                     <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Distribution by Grade</h3><SimplePieChart data={getGradeDistribution()} nameKey="grade" valueKey="sends" /></div>
                     <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Average Attempts by Grade</h3><SimpleBarChart data={getGradeDistribution()} dataKey="avgAttempts" xKey="grade" colors={['#f59e0b']} /></div>
+                    <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Attempts Distribution</h3><SimpleBarChart data={getAttemptsDistribution()} dataKey="count" xKey="range" colors={['#38bdf8']} /></div>
+                    <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Time to Send</h3><SimpleBarChart data={getTimeToSendDistribution()} dataKey="count" xKey="range" colors={['#f97316']} /></div>
+                    <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Weekly Sends</h3><SimpleBarChart data={getWeeklySends()} dataKey="sends" xKey="week" colors={['#22c55e']} /></div>
+                    <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Grade Progression</h3><SimpleLineChart data={getProgressData()} dataKey="avgGrade" xKey="month" color="#38bdf8" /></div>
                     <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]">
                       <h3 className="text-xl font-bold mb-4">Detailed Statistics by Grade</h3>
                       <div className="grid gap-3">{getGradeDistribution().map(stat => {
