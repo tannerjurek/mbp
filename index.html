@@ -228,7 +228,8 @@
         const started = boulders.filter(b => b.completed || b.attempts > 0 || b.sessions.length > 0);
         return [
           { name: 'Flashes', value: started.filter(b => b.flash).length, color: '#eab308' },
-          { name: 'Regular Sends', value: started.filter(b => !b.flash).length, color: '#3b82f6' }
+          { name: 'Non-Flash Sends', value: started.filter(b => b.completed && !b.flash).length, color: '#3b82f6' },
+          { name: 'Started (No Send)', value: started.filter(b => !b.completed).length, color: '#94a3b8' }
         ];
       };
 
