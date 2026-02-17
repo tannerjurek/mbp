@@ -3,20 +3,36 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MBP Boulder Tracker</title>
+  <title>Boulder Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body { margin: 0; }
+    body { margin: 0; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
     .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .secondary-text { font-size: 0.75rem; line-height: 1.1; }
   </style>
 </head>
 <body>
   <div id="root"></div>
   <script type="text/babel">
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useMemo, useRef } = React;
+    const CLOUD_DOC_PATH = 'boulder-tracker/shared';
+    const FIREBASE_CONFIG = {
+      apiKey: "AIzaSyCXXDTDTdh3uJXodc7_PNXkAuGktWmWRV8",
+      authDomain: "mbptj-53596.firebaseapp.com",
+      projectId: "mbptj-53596",
+      storageBucket: "mbptj-53596.firebasestorage.app",
+      messagingSenderId: "243169609250",
+      appId: "1:243169609250:web:dc7592688ea0b18d236c7b",
+      measurementId: "G-THK056XCNE"
+    };
 
     const MBP_GRADES = [
       { grade: 'V0', color: '#F4E03C', textColor: '#000', value: 0 },
@@ -68,7 +84,7 @@
     const SimplePieChart = ({ data, nameKey, valueKey }) => {
       if (!data || data.length === 0) return null;
       const total = data.reduce((sum, d) => sum + (d[valueKey] || 0), 0);
-      if (total === 0) return <div className="text-center text-slate-400">No data</div>;
+      if (total === 0) return <div className="text-center text-slate-400 secondary-text">No data</div>;
       let currentAngle = -Math.PI / 2;
       const size = 220, cx = size / 2, cy = size / 2, radius = 80;
       const polarToCartesian = (angle) => ({ x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) });
@@ -132,18 +148,75 @@
       const [focusedBoulder, setFocusedBoulder] = useState(null);
       const [projectFilter, setProjectFilter] = useState('');
       const [projectGradeFilter, setProjectGradeFilter] = useState('all');
+      const [projectStatusFilter, setProjectStatusFilter] = useState('active');
       const [completedFilter, setCompletedFilter] = useState('');
       const [completedFlashFilter, setCompletedFlashFilter] = useState('all');
       const [dateRangeStart, setDateRangeStart] = useState('');
       const [dateRangeEnd, setDateRangeEnd] = useState('');
       const [showAddForm, setShowAddForm] = useState(false);
       const [sortBy, setSortBy] = useState('dateAdded');
+      const [cloudEnabled, setCloudEnabled] = useState(false);
+      const [cloudReady, setCloudReady] = useState(false);
+      const saveTimeoutRef = useRef(null);
+      const cloudDbRef = useRef(null);
+      const cloudLoadedRef = useRef(false);
+      const cloudSaveTimeoutRef = useRef(null);
 
-      useEffect(() => { const saved = localStorage.getItem('mbp-boulders-v2'); if (saved) setBoulders(JSON.parse(saved)); }, []);
-      useEffect(() => { localStorage.setItem('mbp-boulders-v2', JSON.stringify(boulders)); }, [boulders]);
+      useEffect(() => {
+        const saved = localStorage.getItem('mbp-boulders-v2');
+        if (saved) setBoulders(JSON.parse(saved));
+
+        if (FIREBASE_CONFIG && window.firebase?.apps) {
+          const app = window.firebase.apps.length ? window.firebase.app() : window.firebase.initializeApp(FIREBASE_CONFIG);
+          cloudDbRef.current = window.firebase.firestore(app);
+          setCloudEnabled(true);
+        }
+        setCloudReady(true);
+      }, []);
+
+      useEffect(() => {
+        const loadCloudData = async () => {
+          if (!cloudEnabled || !cloudReady || !cloudDbRef.current || cloudLoadedRef.current) return;
+          try {
+            const doc = await cloudDbRef.current.doc(CLOUD_DOC_PATH).get();
+            if (doc.exists && Array.isArray(doc.data()?.boulders)) {
+              const cloudBoulders = doc.data().boulders;
+              setBoulders(cloudBoulders);
+              localStorage.setItem('mbp-boulders-v2', JSON.stringify(cloudBoulders));
+            } else {
+              const localSaved = localStorage.getItem('mbp-boulders-v2');
+              if (localSaved) {
+                await cloudDbRef.current.doc(CLOUD_DOC_PATH).set({ boulders: JSON.parse(localSaved), updatedAt: new Date().toISOString() });
+              }
+            }
+          } catch (error) {
+            setCloudEnabled(false);
+          }
+          cloudLoadedRef.current = true;
+        };
+
+        loadCloudData();
+      }, [cloudEnabled, cloudReady]);
+
+      useEffect(() => {
+        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = setTimeout(() => {
+          localStorage.setItem('mbp-boulders-v2', JSON.stringify(boulders));
+        }, 300);
+        return () => clearTimeout(saveTimeoutRef.current);
+      }, [boulders]);
+
+      useEffect(() => {
+        if (!cloudEnabled || !cloudDbRef.current || !cloudLoadedRef.current) return;
+        if (cloudSaveTimeoutRef.current) clearTimeout(cloudSaveTimeoutRef.current);
+        cloudSaveTimeoutRef.current = setTimeout(() => {
+          cloudDbRef.current.doc(CLOUD_DOC_PATH).set({ boulders, updatedAt: new Date().toISOString() }).catch(() => setCloudEnabled(false));
+        }, 500);
+        return () => clearTimeout(cloudSaveTimeoutRef.current);
+      }, [boulders, cloudEnabled]);
 
       const addBoulder = (grade) => {
-        const newBoulder = { id: Date.now(), name: '', grade, attempts: 0, completed: false, flash: false, notes: '', dateAdded: new Date().toISOString(), dateCompleted: null, sessions: [] };
+        const newBoulder = { id: Date.now(), name: '', grade, attempts: 0, completed: false, flash: false, notes: '', dateAdded: new Date().toISOString(), dateCompleted: null, sessions: [], status: 'active' };
         setBoulders([newBoulder, ...boulders]);
         setFocusedBoulder(newBoulder.id);
         setShowAddForm(false);
@@ -159,10 +232,16 @@
       }));
       const deleteBoulder = (id) => setBoulders(boulders.filter(b => b.id !== id));
       const getGradeColor = (grade) => MBP_GRADES.find(g => g.grade === grade);
+      const getProjectStatus = (boulder) => {
+        const status = boulder.status || 'active';
+        if (status === 'abandoned' || status === 'unfinished') return 'closed';
+        return status;
+      };
+      const isClosed = (boulder) => getProjectStatus(boulder) === 'closed';
       const formatDate = (isoString) => new Date(isoString).toLocaleDateString();
 
-      const projects = boulders.filter(b => !b.completed);
-      const completed = boulders.filter(b => b.completed);
+      const projects = useMemo(() => boulders.filter(b => !b.completed), [boulders]);
+      const completed = useMemo(() => boulders.filter(b => b.completed), [boulders]);
 
       const getSortedProjects = (arr) => [...arr].sort((a, b) => {
         if (sortBy === 'dateAdded') return new Date(b.dateAdded) - new Date(a.dateAdded);
@@ -171,12 +250,13 @@
         return 0;
       });
 
-      const filteredProjects = getSortedProjects(projects.filter(b => {
+      const filteredProjects = useMemo(() => getSortedProjects(projects.filter(b => {
         const matchesSearch = !projectFilter || (b.name && b.name.toLowerCase().includes(projectFilter.toLowerCase())) || (b.notes && b.notes.toLowerCase().includes(projectFilter.toLowerCase()));
-        return matchesSearch && (projectGradeFilter === 'all' || b.grade === projectGradeFilter);
-      }));
+        const matchesStatus = projectStatusFilter === 'all' || getProjectStatus(b) === projectStatusFilter;
+        return matchesSearch && matchesStatus && (projectGradeFilter === 'all' || b.grade === projectGradeFilter);
+      })), [projects, projectFilter, projectGradeFilter, projectStatusFilter, sortBy]);
 
-      const filteredCompleted = completed.filter(b => {
+      const filteredCompleted = useMemo(() => completed.filter(b => {
         const matchesSearch = !completedFilter || (b.name && b.name.toLowerCase().includes(completedFilter.toLowerCase())) || (b.notes && b.notes.toLowerCase().includes(completedFilter.toLowerCase()));
         const matchesFlash = completedFlashFilter === 'all' || (completedFlashFilter === 'flash' && b.flash) || (completedFlashFilter === 'send' && !b.flash);
         if (dateRangeStart && dateRangeEnd) {
@@ -185,7 +265,7 @@
           return matchesSearch && matchesFlash && bd >= sd && bd <= ed;
         }
         return matchesSearch && matchesFlash;
-      }).sort((a, b) => new Date(b.dateCompleted) - new Date(a.dateCompleted));
+      }).sort((a, b) => new Date(b.dateCompleted) - new Date(a.dateCompleted)), [completed, completedFilter, completedFlashFilter, dateRangeStart, dateRangeEnd]);
 
       const getProgressData = () => {
         const monthlyData = {};
@@ -200,41 +280,106 @@
         return Object.values(monthlyData).map(d => ({ ...d, avgGrade: (d.totalGradeValue / d.sends).toFixed(1) }));
       };
 
+      const getWeeklySends = () => {
+        const weeklyData = {};
+        completed.forEach(boulder => {
+          const date = new Date(boulder.dateCompleted);
+          const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+          const dayOfWeek = (day.getDay() + 6) % 7;
+          day.setDate(day.getDate() - dayOfWeek);
+          const weekKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+          if (!weeklyData[weekKey]) weeklyData[weekKey] = { week: weekKey, sends: 0 };
+          weeklyData[weekKey].sends++;
+        });
+        return Object.values(weeklyData).sort((a, b) => new Date(a.week) - new Date(b.week));
+      };
+
+      const getAttemptsDistribution = () => {
+        const buckets = [
+          { range: '1', min: 1, max: 1 },
+          { range: '2-3', min: 2, max: 3 },
+          { range: '4-6', min: 4, max: 6 },
+          { range: '7-9', min: 7, max: 9 },
+          { range: '10+', min: 10, max: Infinity }
+        ];
+        return buckets.map(bucket => ({
+          range: bucket.range,
+          count: completed.filter(b => b.attempts >= bucket.min && b.attempts <= bucket.max).length
+        })).filter(bucket => bucket.count > 0);
+      };
+
+      const getTimeToSendDistribution = () => {
+        const buckets = [
+          { range: '0-1d', min: 0, max: 1 },
+          { range: '2-7d', min: 2, max: 7 },
+          { range: '8-30d', min: 8, max: 30 },
+          { range: '31+d', min: 31, max: Infinity }
+        ];
+        return buckets.map(bucket => ({
+          range: bucket.range,
+          count: completed.filter(b => {
+            const start = new Date(b.dateAdded);
+            const end = new Date(b.dateCompleted);
+            const days = Math.max(0, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
+            return days >= bucket.min && days <= bucket.max;
+          }).length
+        })).filter(bucket => bucket.count > 0);
+      };
+
+      const getBacklogRatio = () => [
+        { name: 'Completed', value: completed.length, color: '#22c55e' },
+        { name: 'Projects', value: projects.length, color: '#38bdf8' }
+      ];
+
       const getGradeDistribution = () => MBP_GRADES.map(({ grade, color }) => {
         const gc = completed.filter(b => b.grade === grade);
         return { grade, color, sends: gc.length, flashes: gc.filter(b => b.flash).length, avgAttempts: gc.length > 0 ? (gc.reduce((s, b) => s + b.attempts, 0) / gc.length).toFixed(1) : 0 };
       }).filter(d => d.sends > 0);
 
-      const getFlashRate = () => [{ name: 'Flashes', value: completed.filter(b => b.flash).length, color: '#eab308' }, { name: 'Regular Sends', value: completed.filter(b => !b.flash).length, color: '#3b82f6' }];
+      const getFlashRate = () => {
+        const started = boulders.filter(b => b.completed || b.attempts > 0 || b.sessions.length > 0);
+        return [
+          { name: 'Flashes', value: started.filter(b => b.flash).length, color: '#eab308' },
+          { name: 'Non-Flash Sends', value: started.filter(b => b.completed && !b.flash).length, color: '#3b82f6' },
+          { name: 'Started (No Send)', value: started.filter(b => !b.completed).length, color: '#94a3b8' }
+        ];
+      };
 
       const stats = (() => {
         const thisMonth = new Date(); thisMonth.setDate(1); thisMonth.setHours(0, 0, 0, 0);
         return {
           totalProjects: projects.length,
           sendsThisMonth: completed.filter(b => new Date(b.dateCompleted) >= thisMonth).length,
-          flashRate: completed.length > 0 ? Math.round((completed.filter(b => b.flash).length / completed.length) * 100) : 0,
-          completionRate: boulders.length > 0 ? Math.round((completed.length / boulders.length) * 100) : 0
+          flashRate: (() => {
+            const started = boulders.filter(b => b.completed || b.attempts > 0 || b.sessions.length > 0);
+            return started.length > 0 ? Math.round((started.filter(b => b.flash).length / started.length) * 100) : 0;
+          })(),
+          completionRate: (() => {
+            const incompleteCount = boulders.filter(b => ['paused', 'closed'].includes(getProjectStatus(b))).length;
+            const trackedCount = completed.length + incompleteCount;
+            return trackedCount > 0 ? Math.round((completed.length / trackedCount) * 100) : 0;
+          })()
         };
       })();
 
       return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 text-white p-4 pb-8">
+        <div className="min-h-screen bg-black text-white p-4 pb-8">
           <div className="max-w-6xl mx-auto">
             <header className="text-center mb-6 pt-6">
-              <h1 className="text-4xl font-bold mb-2">MBP Boulder Tracker</h1>
-              <p className="text-slate-400">Minneapolis Bouldering Project</p>
+              <button onClick={() => { setView('projects'); setFocusedBoulder(null); }} className="text-4xl font-bold mb-2 transition bg-gradient-to-r from-blue-400 via-cyan-400 to-purple-400 text-transparent bg-clip-text hover:opacity-90" type="button">Boulder Tracker</button>
+              <div className="secondary-text text-slate-400 mb-2">Memory: {cloudEnabled ? 'Cloud Sync On' : 'Local Only (add Firebase config to enable cloud)'}</div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
-                <button onClick={() => setView('projects')} className="bg-slate-800/50 hover:bg-slate-700/50 rounded-lg p-3 text-left">
-                  <div className="text-2xl font-bold text-blue-400">{stats.totalProjects}</div><div className="text-xs text-slate-400">Active Projects</div>
+                <button onClick={() => setView('projects')} className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 hover:from-slate-800/80 hover:to-slate-700/60 backdrop-blur-xl border border-white/10 rounded-lg p-3 text-left shadow-[0_8px_30px_rgba(0,0,0,0.35)] transition">
+                  <div className="text-2xl font-bold text-blue-400">{stats.totalProjects}</div><div className="text-xs text-slate-400 secondary-text">Active Projects</div>
                 </button>
-                <button onClick={() => { setView('completed'); const t = new Date(); setDateRangeStart(new Date(t.getFullYear(), t.getMonth(), 1).toISOString().split('T')[0]); setDateRangeEnd(t.toISOString().split('T')[0]); }} className="bg-slate-800/50 hover:bg-slate-700/50 rounded-lg p-3 text-left">
-                  <div className="text-2xl font-bold text-purple-400">{stats.sendsThisMonth}</div><div className="text-xs text-slate-400">This Month</div>
+                <button onClick={() => { setView('completed'); const t = new Date(); setDateRangeStart(new Date(t.getFullYear(), t.getMonth(), 1).toISOString().split('T')[0]); setDateRangeEnd(t.toISOString().split('T')[0]); }} className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 hover:from-slate-800/80 hover:to-slate-700/60 backdrop-blur-xl border border-white/10 rounded-lg p-3 text-left shadow-[0_8px_30px_rgba(0,0,0,0.35)] transition">
+                  <div className="text-2xl font-bold text-purple-400">{stats.sendsThisMonth}</div><div className="text-xs text-slate-400 secondary-text">This Month</div>
                 </button>
-                <button onClick={() => { setView('completed'); setCompletedFilter(''); setCompletedFlashFilter('flash'); setDateRangeStart(''); setDateRangeEnd(''); }} className="bg-slate-800/50 hover:bg-slate-700/50 rounded-lg p-3 text-left">
-                  <div className="text-2xl font-bold text-yellow-400">{stats.flashRate}%</div><div className="text-xs text-slate-400">Flash Rate</div>
+                <button onClick={() => { setView('completed'); setCompletedFilter(''); setCompletedFlashFilter('flash'); setDateRangeStart(''); setDateRangeEnd(''); }} className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 hover:from-slate-800/80 hover:to-slate-700/60 backdrop-blur-xl border border-white/10 rounded-lg p-3 text-left shadow-[0_8px_30px_rgba(0,0,0,0.35)] transition">
+                  <div className="text-2xl font-bold text-yellow-400">{stats.flashRate}%</div><div className="text-xs text-slate-400 secondary-text">Flash Rate</div>
                 </button>
-                <button onClick={() => setView('stats')} className="bg-slate-800/50 hover:bg-slate-700/50 rounded-lg p-3 text-left">
-                  <div className="text-2xl font-bold text-cyan-400">{stats.completionRate}%</div><div className="text-xs text-slate-400">Completion</div>
+                <button onClick={() => setView('stats')} className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 hover:from-slate-800/80 hover:to-slate-700/60 backdrop-blur-xl border border-white/10 rounded-lg p-3 text-left shadow-[0_8px_30px_rgba(0,0,0,0.35)] transition">
+                  <div className="text-2xl font-bold text-cyan-400">{stats.completionRate}%</div><div className="text-xs text-slate-400 secondary-text">Completion</div>
                 </button>
               </div>
             </header>
@@ -254,21 +399,29 @@
                   if (!boulder) return null;
                   const gradeInfo = getGradeColor(boulder.grade);
                   return (
-                    <div className="bg-slate-800 rounded-xl p-6 shadow-xl mb-6">
+                    <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.4)] mb-6">
                       <button onClick={() => setFocusedBoulder(null)} className="text-slate-400 hover:text-slate-300 mb-4">← Back to all projects</button>
                       <div className="text-center">
                         <div style={{ backgroundColor: gradeInfo.color, color: gradeInfo.textColor }} className="inline-block px-8 py-4 rounded-xl font-bold text-3xl mb-6">{boulder.grade}</div>
                         <div className="text-6xl font-bold mb-2">{boulder.attempts}</div>
-                        <div className="text-xl text-slate-400 mb-2">attempt{boulder.attempts !== 1 ? 's' : ''}</div>
+                        <div className="text-xl text-slate-400 secondary-text mb-2">attempt{boulder.attempts !== 1 ? 's' : ''}</div>
                         {boulder.sessions.length > 0 && <div className="text-sm text-slate-500 mb-6">{boulder.sessions.length} session{boulder.sessions.length !== 1 ? 's' : ''} · Last: {formatDate(boulder.sessions[boulder.sessions.length - 1].date)}</div>}
-                        <button onClick={() => addAttempts(boulder.id, 1)} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-8 rounded-xl text-2xl mb-4 active:scale-95">+1 Attempt</button>
-                        <div className="grid grid-cols-2 gap-4 mb-6">
-                          <button onClick={() => { markComplete(boulder.id, false); setFocusedBoulder(null); }} className="bg-green-600 hover:bg-green-700 px-6 py-4 rounded-xl text-lg font-semibold">✓ Sent!</button>
-                          <button onClick={() => { markComplete(boulder.id, true); setFocusedBoulder(null); }} disabled={boulder.attempts > 0 || boulder.sessions.length > 0} className={`px-6 py-4 rounded-xl text-lg font-semibold ${boulder.attempts > 0 || boulder.sessions.length > 0 ? 'bg-slate-600 text-slate-400 cursor-not-allowed' : 'bg-yellow-600 hover:bg-yellow-700'}`}>⚡ Flash!</button>
+                        <button onClick={() => addAttempts(boulder.id, 1)} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-8 rounded-2xl text-2xl mb-4 active:scale-95 shadow-lg shadow-blue-500/20 transition">+1 Attempt</button>
+                        {!isClosed(boulder) && (
+                          <button onClick={() => updateBoulder(boulder.id, { status: getProjectStatus(boulder) === 'active' ? 'paused' : 'active' })} className="w-full bg-slate-700 hover:bg-slate-600 text-white font-semibold py-3 rounded-xl text-lg mb-3 transition">
+                            {getProjectStatus(boulder) === 'active' ? 'Pause Project' : 'Resume Project'}
+                          </button>
+                        )}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                          <button onClick={() => { markComplete(boulder.id, false); setFocusedBoulder(null); }} className="bg-green-600 hover:bg-green-700 px-6 py-4 rounded-xl text-lg font-semibold shadow-lg shadow-green-500/20 transition">✓ Sent!</button>
+                          <button onClick={() => { markComplete(boulder.id, true); setFocusedBoulder(null); }} disabled={boulder.attempts > 0 || boulder.sessions.length > 0} className={`px-6 py-4 rounded-xl text-lg font-semibold transition ${boulder.attempts > 0 || boulder.sessions.length > 0 ? 'bg-slate-600 text-slate-400 cursor-not-allowed' : 'bg-yellow-600 hover:bg-yellow-700 shadow-lg shadow-yellow-500/20'}`}>⚡ Flash!</button>
+                          <button onClick={() => updateBoulder(boulder.id, { status: isClosed(boulder) ? 'active' : 'closed' })} className={`px-6 py-4 rounded-xl text-lg font-semibold transition ${isClosed(boulder) ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20' : 'bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-500/20'}`}>
+                            {isClosed(boulder) ? 'Reopen Project' : 'Will Not Finish'}
+                          </button>
                         </div>
                         {boulder.sessions.length > 0 && (
                           <details className="mb-6 text-left"><summary className="cursor-pointer text-blue-400 hover:text-blue-300 mb-2 text-sm font-semibold">View Session History</summary>
-                            <div className="bg-slate-700 rounded-lg p-3 space-y-2">{boulder.sessions.map((s, idx) => <div key={idx} className="flex justify-between text-sm"><span className="text-slate-300">{formatDate(s.date)}</span><span className="text-slate-400">+{s.attempts} attempt{s.attempts !== 1 ? 's' : ''}</span></div>)}</div>
+                            <div className="bg-slate-700 rounded-lg p-3 space-y-2">{boulder.sessions.map((s, idx) => <div key={idx} className="flex justify-between text-sm"><span className="text-slate-300">{formatDate(s.date)}</span><span className="text-slate-400 secondary-text">+{s.attempts} attempt{s.attempts !== 1 ? 's' : ''}</span></div>)}</div>
                           </details>
                         )}
                         <input type="text" value={boulder.name} onChange={(e) => updateBoulder(boulder.id, { name: e.target.value })} placeholder="Name (optional)" className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white text-center text-lg mb-3 focus:border-blue-500 focus:outline-none placeholder:text-slate-500" />
@@ -280,35 +433,67 @@
                 })() : (
                   <>
                     {!showAddForm ? <button onClick={() => setShowAddForm(true)} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl mb-6">+ Add New Project</button> : (
-                      <div className="bg-slate-800 rounded-xl p-6 shadow-xl mb-6">
+                      <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.4)] mb-6">
                         <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold">Select Grade</h2><button onClick={() => setShowAddForm(false)} className="text-slate-400 hover:text-slate-300 text-2xl">✕</button></div>
                         <div className="grid grid-cols-3 gap-2">{MBP_GRADES.map(({ grade, color, textColor }) => <button key={grade} onClick={() => addBoulder(grade)} style={{ backgroundColor: color, color: textColor }} className="py-4 rounded-lg font-bold hover:scale-105 transition">{grade}</button>)}</div>
                       </div>
                     )}
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {[
+                        { label: 'Active', value: 'active' },
+                        { label: 'Paused', value: 'paused' },
+                        { label: 'Closed', value: 'closed' },
+                        { label: 'All', value: 'all' }
+                      ].map(option => (
+                        <button key={option.value} onClick={() => setProjectStatusFilter(option.value)} className={`px-3 py-1.5 rounded-full text-sm font-semibold transition ${projectStatusFilter === option.value ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
                     {filteredProjects.length > 0 && (
-                      <details className="bg-slate-800 rounded-xl mb-4"><summary className="cursor-pointer p-4 text-sm font-semibold text-slate-300 hover:text-white">Filters & Sort</summary>
+                      <details className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl mb-4 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><summary className="cursor-pointer p-4 text-sm font-semibold text-slate-300 hover:text-white">Filters & Sort</summary>
                         <div className="px-4 pb-4 space-y-3">
                           <input type="text" placeholder="Search..." value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:border-blue-500 focus:outline-none" />
                           <select value={projectGradeFilter} onChange={(e) => setProjectGradeFilter(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"><option value="all">All Grades</option>{MBP_GRADES.map(({ grade }) => <option key={grade} value={grade}>{grade}</option>)}</select>
+                          <select value={projectStatusFilter} onChange={(e) => setProjectStatusFilter(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"><option value="all">All Statuses</option><option value="active">Active</option><option value="paused">Paused</option><option value="closed">Closed</option></select>
                           <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"><option value="dateAdded">Date Added</option><option value="attempts">Most Attempts</option><option value="grade">Hardest First</option></select>
                         </div>
                       </details>
                     )}
-                    <h2 className="text-2xl font-bold mb-4">Current Projects</h2>
+                    <h2 className="text-2xl font-bold mb-4">
+                      {projectStatusFilter === 'closed' ? 'Closed Projects' : projectStatusFilter === 'paused' ? 'Paused Projects' : projectStatusFilter === 'all' ? 'All Projects' : 'Active Projects'}
+                    </h2>
                     <div className="space-y-3">
-                      {filteredProjects.length === 0 ? <div className="bg-slate-800 rounded-xl p-8 text-center text-slate-400">{projectFilter || projectGradeFilter !== 'all' ? 'No projects match.' : 'No active projects. Add one above!'}</div> : filteredProjects.map(boulder => {
+                      {filteredProjects.length === 0 ? <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-8 text-center text-slate-400 secondary-text shadow-[0_10px_40px_rgba(0,0,0,0.3)]">{projectFilter || projectGradeFilter !== 'all' || projectStatusFilter !== 'active' ? 'No projects match.' : 'No active projects. Add one above!'}</div> : filteredProjects.map(boulder => {
                         const gradeInfo = getGradeColor(boulder.grade);
                         return (
-                          <div key={boulder.id} className="bg-slate-800 rounded-xl p-4 shadow-lg cursor-pointer hover:bg-slate-700 transition" onClick={() => setFocusedBoulder(boulder.id)}>
+                          <div key={boulder.id} className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-4 shadow-[0_10px_35px_rgba(0,0,0,0.3)] cursor-pointer hover:from-slate-800/80 hover:to-slate-700/60 transition" onClick={() => setFocusedBoulder(boulder.id)}>
                             <div className="flex items-start gap-4">
                               <div style={{ backgroundColor: gradeInfo.color, color: gradeInfo.textColor }} className="px-4 py-2 rounded-lg font-bold text-lg shrink-0">{boulder.grade}</div>
                               <div className="flex-1">
-                                {boulder.name && <div className="font-bold text-lg mb-2">{boulder.name}</div>}
+                                <div className="flex items-center gap-2 mb-2">
+                                  {boulder.name && <div className="font-bold text-lg">{boulder.name}</div>}
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${getProjectStatus(boulder) === 'active' ? 'bg-green-500/20 text-green-300' : getProjectStatus(boulder) === 'paused' ? 'bg-yellow-500/20 text-yellow-300' : 'bg-rose-500/20 text-rose-300'}`}>{getProjectStatus(boulder) === 'active' ? 'Active' : getProjectStatus(boulder) === 'paused' ? 'Paused' : 'Closed'}</span>
+                                </div>
                                 <div className="font-semibold text-slate-300 mb-2">{boulder.attempts} attempt{boulder.attempts !== 1 ? 's' : ''}</div>
                                 {boulder.notes && <div className="text-sm text-slate-300 mb-2 line-clamp-2">{boulder.notes}</div>}
-                                <div className="text-xs text-slate-400">Added {formatDate(boulder.dateAdded)}</div>
+                                <div className="text-xs text-slate-400 secondary-text">Added {formatDate(boulder.dateAdded)}</div>
                               </div>
-                              <div className="text-slate-400 shrink-0">→</div>
+                              <div className="flex flex-col items-end gap-2 shrink-0">
+                                {!isClosed(boulder) ? (
+                                  <button onClick={(e) => { e.stopPropagation(); updateBoulder(boulder.id, { status: getProjectStatus(boulder) === 'active' ? 'paused' : 'active' }); }} className="text-xs px-2 py-1 rounded-full bg-slate-700 hover:bg-slate-600 text-slate-200">
+                                    {getProjectStatus(boulder) === 'active' ? 'Pause' : 'Resume'}
+                                  </button>
+                                ) : (
+                                  <button onClick={(e) => { e.stopPropagation(); updateBoulder(boulder.id, { status: 'active' }); }} className="text-xs px-2 py-1 rounded-full bg-blue-600 hover:bg-blue-500 text-white">
+                                    Reopen
+                                  </button>
+                                )}
+                                <button onClick={(e) => { e.stopPropagation(); updateBoulder(boulder.id, { status: isClosed(boulder) ? 'active' : 'closed' }); }} className={`text-xs px-2 py-1 rounded-full ${isClosed(boulder) ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' : 'bg-rose-600 hover:bg-rose-500 text-white'}`}>
+                                  {isClosed(boulder) ? 'Restore' : 'Close'}
+                                </button>
+                                <div className="text-slate-400 secondary-text">→</div>
+                              </div>
                             </div>
                           </div>
                         );
@@ -323,7 +508,7 @@
               <div className="space-y-3">
                 <h2 className="text-2xl font-bold mb-4">Completed Sends</h2>
                 {completed.length > 0 && (
-                  <details className="bg-slate-800 rounded-xl mb-4"><summary className="cursor-pointer p-4 text-sm font-semibold text-slate-300 hover:text-white">Filters</summary>
+                  <details className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl mb-4 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><summary className="cursor-pointer p-4 text-sm font-semibold text-slate-300 hover:text-white">Filters</summary>
                     <div className="px-4 pb-4 space-y-3">
                       <input type="text" placeholder="Search..." value={completedFilter} onChange={(e) => setCompletedFilter(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:border-blue-500 focus:outline-none" />
                       <select value={completedFlashFilter} onChange={(e) => setCompletedFlashFilter(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"><option value="all">All Sends</option><option value="flash">Flashes Only</option><option value="send">Regular Sends</option></select>
@@ -335,10 +520,10 @@
                     </div>
                   </details>
                 )}
-                {filteredCompleted.length === 0 ? <div className="bg-slate-800 rounded-xl p-8 text-center text-slate-400">{completedFilter || dateRangeStart || dateRangeEnd || completedFlashFilter !== 'all' ? 'No sends match.' : 'No completed sends yet!'}</div> : filteredCompleted.map(boulder => {
+                {filteredCompleted.length === 0 ? <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-8 text-center text-slate-400 secondary-text shadow-[0_10px_40px_rgba(0,0,0,0.3)]">{completedFilter || dateRangeStart || dateRangeEnd || completedFlashFilter !== 'all' ? 'No sends match.' : 'No completed sends yet!'}</div> : filteredCompleted.map(boulder => {
                   const gradeInfo = getGradeColor(boulder.grade);
                   return (
-                    <div key={boulder.id} className="bg-slate-800 rounded-xl p-4 shadow-lg">
+                    <div key={boulder.id} className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-4 shadow-[0_10px_35px_rgba(0,0,0,0.3)]">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4 flex-1">
                           <div style={{ backgroundColor: gradeInfo.color, color: gradeInfo.textColor }} className="px-4 py-2 rounded-lg font-bold text-lg">{boulder.grade}</div>
@@ -347,7 +532,7 @@
                               {boulder.name && <><span className="text-lg">{boulder.name}</span><span className="text-slate-400">·</span></>}
                               <span className={boulder.flash ? 'text-yellow-400' : 'text-green-400'}>{boulder.flash ? '⚡ Flash!' : `✓ ${boulder.attempts} attempt${boulder.attempts !== 1 ? 's' : ''}`}</span>
                             </div>
-                            <div className="text-sm text-slate-400">{formatDate(boulder.dateCompleted)}</div>
+                            <div className="text-sm text-slate-400 secondary-text">{formatDate(boulder.dateCompleted)}</div>
                             {boulder.notes && <div className="text-sm text-slate-300 mt-1">{boulder.notes}</div>}
                           </div>
                         </div>
@@ -362,26 +547,31 @@
             {view === 'stats' && (
               <div>
                 <h2 className="text-2xl font-bold mb-6">📈 Statistics</h2>
-                {completed.length === 0 ? <div className="bg-slate-800 rounded-xl p-8 text-center text-slate-400">No completed sends yet!</div> : (
+                {completed.length === 0 ? <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-8 text-center text-slate-400 secondary-text shadow-[0_10px_40px_rgba(0,0,0,0.3)]">No completed sends yet!</div> : (
                   <div className="space-y-6">
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-slate-800 rounded-xl p-6 text-center"><div className="text-4xl font-bold text-blue-400">{completed.length}</div><div className="text-slate-400 mt-2">Total Sends</div></div>
-                      <div className="bg-slate-800 rounded-xl p-6 text-center"><div className="text-4xl font-bold text-yellow-400">{completed.filter(b => b.flash).length}</div><div className="text-slate-400 mt-2">Flashes</div></div>
+                      <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 text-center shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><div className="text-4xl font-bold text-blue-400">{completed.length}</div><div className="text-slate-400 secondary-text mt-2">Total Sends</div></div>
+                      <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 text-center shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><div className="text-4xl font-bold text-yellow-400">{completed.filter(b => b.flash).length}</div><div className="text-slate-400 secondary-text mt-2">Flashes</div></div>
                     </div>
-                    <div className="bg-slate-800 rounded-xl p-6"><h3 className="text-xl font-bold mb-4">Flash Rate</h3><SimplePieChart data={getFlashRate()} nameKey="name" valueKey="value" /></div>
-                    <div className="bg-slate-800 rounded-xl p-6"><h3 className="text-xl font-bold mb-4">Distribution by Grade</h3><SimplePieChart data={getGradeDistribution()} nameKey="grade" valueKey="sends" /></div>
-                    <div className="bg-slate-800 rounded-xl p-6"><h3 className="text-xl font-bold mb-4">Average Attempts by Grade</h3><SimpleBarChart data={getGradeDistribution()} dataKey="avgAttempts" xKey="grade" colors={['#f59e0b']} /></div>
-                    <div className="bg-slate-800 rounded-xl p-6">
+                    <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Flash Rate</h3><SimplePieChart data={getFlashRate()} nameKey="name" valueKey="value" /></div>
+                    <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Completed vs Projects</h3><SimplePieChart data={getBacklogRatio()} nameKey="name" valueKey="value" /></div>
+                    <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Distribution by Grade</h3><SimplePieChart data={getGradeDistribution()} nameKey="grade" valueKey="sends" /></div>
+                    <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Average Attempts by Grade</h3><SimpleBarChart data={getGradeDistribution()} dataKey="avgAttempts" xKey="grade" colors={['#f59e0b']} /></div>
+                    <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Attempts Distribution</h3><SimpleBarChart data={getAttemptsDistribution()} dataKey="count" xKey="range" colors={['#38bdf8']} /></div>
+                    <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Time to Send</h3><SimpleBarChart data={getTimeToSendDistribution()} dataKey="count" xKey="range" colors={['#f97316']} /></div>
+                    <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Weekly Sends</h3><SimpleBarChart data={getWeeklySends()} dataKey="sends" xKey="week" colors={['#22c55e']} /></div>
+                    <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Grade Progression</h3><SimpleLineChart data={getProgressData()} dataKey="avgGrade" xKey="month" color="#38bdf8" /></div>
+                    <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]">
                       <h3 className="text-xl font-bold mb-4">Detailed Statistics by Grade</h3>
                       <div className="grid gap-3">{getGradeDistribution().map(stat => {
                         const gradeInfo = getGradeColor(stat.grade);
                         return (
-                          <div key={stat.grade} className="bg-slate-700 rounded-xl p-4 flex items-center gap-4">
+                          <div key={stat.grade} className="bg-slate-900/70 backdrop-blur-xl border border-white/10 rounded-xl p-4 flex items-center gap-4 shadow-[0_10px_35px_rgba(0,0,0,0.25)]">
                             <div style={{ backgroundColor: gradeInfo.color, color: gradeInfo.textColor }} className="px-4 py-2 rounded-lg font-bold text-lg">{stat.grade}</div>
                             <div className="flex-1 grid grid-cols-3 gap-4 text-sm">
-                              <div><div className="text-slate-400">Sends</div><div className="font-bold text-lg">{stat.sends}</div></div>
-                              <div><div className="text-slate-400">Flashes</div><div className="font-bold text-lg">{stat.flashes}</div></div>
-                              <div><div className="text-slate-400">Avg Attempts</div><div className="font-bold text-lg">{stat.avgAttempts}</div></div>
+                              <div><div className="text-slate-400 secondary-text">Sends</div><div className="font-bold text-lg">{stat.sends}</div></div>
+                              <div><div className="text-slate-400 secondary-text">Flashes</div><div className="font-bold text-lg">{stat.flashes}</div></div>
+                              <div><div className="text-slate-400 secondary-text">Avg Attempts</div><div className="font-bold text-lg">{stat.avgAttempts}</div></div>
                             </div>
                           </div>
                         );
@@ -395,11 +585,11 @@
             {view === 'progress' && (
               <div className="space-y-6">
                 <h2 className="text-2xl font-bold mb-4">Progress Over Time</h2>
-                {completed.length === 0 ? <div className="bg-slate-800 rounded-xl p-8 text-center text-slate-400">Complete some boulders to see progress!</div> : (
+                {completed.length === 0 ? <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-8 text-center text-slate-400 secondary-text shadow-[0_10px_40px_rgba(0,0,0,0.3)]">Complete some boulders to see progress!</div> : (
                   <>
-                    <div className="bg-slate-800 rounded-xl p-6"><h3 className="text-xl font-bold mb-4">Monthly Sends</h3><SimpleBarChart data={getProgressData()} dataKey="sends" secondaryKey="flashes" xKey="month" colors={['#3b82f6', '#eab308']} /></div>
-                    <div className="bg-slate-800 rounded-xl p-6"><h3 className="text-xl font-bold mb-4">Average Grade Over Time</h3><SimpleLineChart data={getProgressData()} dataKey="avgGrade" xKey="month" color="#10b981" /></div>
-                    <div className="bg-slate-800 rounded-xl p-6"><h3 className="text-xl font-bold mb-4">Sends by Grade</h3><SimpleBarChart data={getGradeDistribution()} dataKey="sends" secondaryKey="flashes" xKey="grade" colors={['#8b5cf6', '#eab308']} /></div>
+                    <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Monthly Sends</h3><SimpleBarChart data={getProgressData()} dataKey="sends" secondaryKey="flashes" xKey="month" colors={['#3b82f6', '#eab308']} /></div>
+                    <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Average Grade Over Time</h3><SimpleLineChart data={getProgressData()} dataKey="avgGrade" xKey="month" color="#10b981" /></div>
+                    <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Sends by Grade</h3><SimpleBarChart data={getGradeDistribution()} dataKey="sends" secondaryKey="flashes" xKey="grade" colors={['#8b5cf6', '#eab308']} /></div>
                   </>
                 )}
               </div>
