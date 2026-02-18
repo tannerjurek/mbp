@@ -1,7 +1,5 @@
-// Firebase configuration - this file is gitignored and must NOT be committed.
-// Copy firebase-config.example.js to firebase-config.js and fill in your values.
 window.FIREBASE_CONFIG = {
-  apiKey: "AIzaSyCXXDTDTdh3uJXodc7_PNXkAuGktWmWRV8",
+  apiKey: "AIzaSyA7ZGYKgYqfVoUuF-OyPcNyHXMF-H5r_SU",
   authDomain: "mbptj-53596.firebaseapp.com",
   projectId: "mbptj-53596",
   storageBucket: "mbptj-53596.firebasestorage.app",
