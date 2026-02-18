@@ -361,8 +361,13 @@
 
       const getGradeDistribution = () => MBP_GRADES.map(({ grade, color }) => {
         const gc = completed.filter(b => b.grade === grade);
-        return { grade, color, sends: gc.length, flashes: gc.filter(b => b.flash).length, avgAttempts: gc.length > 0 ? (gc.reduce((s, b) => s + b.attempts, 0) / gc.length).toFixed(1) : 0 };
+        const totalAttempts = gc.reduce((s, b) => s + b.attempts, 0);
+        return { grade, color, sends: gc.length, flashes: gc.filter(b => b.flash).length, totalAttempts, avgAttempts: gc.length > 0 ? (totalAttempts / gc.length).toFixed(1) : 0 };
       }).filter(d => d.sends > 0);
+
+      const getTotalAttemptsByGrade = () => MBP_GRADES.map(({ grade, color }) => ({
+        grade, color, attempts: boulders.filter(b => b.grade === grade).reduce((s, b) => s + b.attempts, 0)
+      })).filter(d => d.attempts > 0);
 
       const getFlashRate = () => {
         const started = boulders.filter(b => b.completed || b.attempts > 0 || b.sessions.length > 0);
@@ -597,10 +602,13 @@
                     <div className="grid grid-cols-2 gap-4">
                       <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 text-center shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><div className="text-4xl font-bold text-blue-400">{completed.length}</div><div className="text-slate-400 secondary-text mt-2">Total Sends</div></div>
                       <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 text-center shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><div className="text-4xl font-bold text-yellow-400">{completed.filter(b => b.flash).length}</div><div className="text-slate-400 secondary-text mt-2">Flashes</div></div>
+                      <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 text-center shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><div className="text-4xl font-bold text-orange-400">{boulders.reduce((s, b) => s + b.attempts, 0)}</div><div className="text-slate-400 secondary-text mt-2">Total Attempts</div></div>
+                      <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 text-center shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><div className="text-4xl font-bold text-cyan-400">{completed.length > 0 ? (completed.reduce((s, b) => s + b.attempts, 0) / completed.length).toFixed(1) : 0}</div><div className="text-slate-400 secondary-text mt-2">Avg Attempts / Send</div></div>
                     </div>
                     <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Flash Rate</h3><SimplePieChart data={getFlashRate()} nameKey="name" valueKey="value" /></div>
                     <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Completed vs Projects</h3><SimplePieChart data={getBacklogRatio()} nameKey="name" valueKey="value" /></div>
                     <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Distribution by Grade</h3><SimplePieChart data={getGradeDistribution()} nameKey="grade" valueKey="sends" /></div>
+                    <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Total Attempts by Grade</h3><SimplePieChart data={getTotalAttemptsByGrade()} nameKey="grade" valueKey="attempts" /></div>
                     <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Average Attempts by Grade</h3><SimpleBarChart data={getGradeDistribution()} dataKey="avgAttempts" xKey="grade" colors={['#f59e0b']} /></div>
                     <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Attempts Distribution</h3><SimpleBarChart data={getAttemptsDistribution()} dataKey="count" xKey="range" colors={['#38bdf8']} /></div>
                     <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]"><h3 className="text-xl font-bold mb-4">Time to Send</h3><SimpleBarChart data={getTimeToSendDistribution()} dataKey="count" xKey="range" colors={['#f97316']} /></div>
@@ -613,9 +621,10 @@
                         return (
                           <div key={stat.grade} className="bg-slate-900/70 backdrop-blur-xl border border-white/10 rounded-xl p-4 flex items-center gap-4 shadow-[0_10px_35px_rgba(0,0,0,0.25)]">
                             <div style={{ backgroundColor: gradeInfo.color, color: gradeInfo.textColor }} className="px-4 py-2 rounded-lg font-bold text-lg">{stat.grade}</div>
-                            <div className="flex-1 grid grid-cols-3 gap-4 text-sm">
+                            <div className="flex-1 grid grid-cols-4 gap-4 text-sm">
                               <div><div className="text-slate-400 secondary-text">Sends</div><div className="font-bold text-lg">{stat.sends}</div></div>
                               <div><div className="text-slate-400 secondary-text">Flashes</div><div className="font-bold text-lg">{stat.flashes}</div></div>
+                              <div><div className="text-slate-400 secondary-text">Total Attempts</div><div className="font-bold text-lg">{stat.totalAttempts}</div></div>
                               <div><div className="text-slate-400 secondary-text">Avg Attempts</div><div className="font-bold text-lg">{stat.avgAttempts}</div></div>
                             </div>
                           </div>
