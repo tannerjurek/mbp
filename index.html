@@ -250,7 +250,7 @@
         const provider = new window.firebase.auth.GoogleAuthProvider();
         try {
           setAuthError('');
-          await window.firebase.auth().signInWithRedirect(provider);
+          await window.firebase.auth().signInWithPopup(provider);
         } catch (e) { setAuthError(e.message); }
       };
       const signOut = async () => {
