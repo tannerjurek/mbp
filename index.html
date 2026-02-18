@@ -13,6 +13,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="firebase-config.js"></script>
   <style>
     body { margin: 0; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
     .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -24,15 +25,7 @@
   <script type="text/babel">
     const { useState, useEffect, useMemo, useRef } = React;
     const CLOUD_DOC_PATH = 'boulder-tracker/shared';
-    const FIREBASE_CONFIG = {
-      apiKey: "AIzaSyCXXDTDTdh3uJXodc7_PNXkAuGktWmWRV8",
-      authDomain: "mbptj-53596.firebaseapp.com",
-      projectId: "mbptj-53596",
-      storageBucket: "mbptj-53596.firebasestorage.app",
-      messagingSenderId: "243169609250",
-      appId: "1:243169609250:web:dc7592688ea0b18d236c7b",
-      measurementId: "G-THK056XCNE"
-    };
+    const FIREBASE_CONFIG = window.FIREBASE_CONFIG || null;
 
     const MBP_GRADES = [
       { grade: 'V0', color: '#F4E03C', textColor: '#000', value: 0 },
