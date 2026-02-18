@@ -369,24 +369,18 @@
         grade, color, attempts: boulders.filter(b => b.grade === grade).reduce((s, b) => s + b.attempts, 0)
       })).filter(d => d.attempts > 0);
 
-      const getFlashRate = () => {
-        const started = boulders.filter(b => b.completed || b.attempts > 0 || b.sessions.length > 0);
-        return [
-          { name: 'Flashes', value: started.filter(b => b.flash).length, color: '#eab308' },
-          { name: 'Non-Flash Sends', value: started.filter(b => b.completed && !b.flash).length, color: '#3b82f6' },
-          { name: 'Started (No Send)', value: started.filter(b => !b.completed).length, color: '#94a3b8' }
-        ];
-      };
+      const getFlashRate = () => [
+        { name: 'Flashes', value: boulders.filter(b => b.flash).length, color: '#eab308' },
+        { name: 'Non-Flash Sends', value: boulders.filter(b => b.completed && !b.flash).length, color: '#3b82f6' },
+        { name: 'Not Sent', value: boulders.filter(b => !b.completed).length, color: '#94a3b8' }
+      ];
 
       const stats = (() => {
         const thisMonth = new Date(); thisMonth.setDate(1); thisMonth.setHours(0, 0, 0, 0);
         return {
           totalProjects: projects.length,
           sendsThisMonth: completed.filter(b => new Date(b.dateCompleted) >= thisMonth).length,
-          flashRate: (() => {
-            const started = boulders.filter(b => b.completed || b.attempts > 0 || b.sessions.length > 0);
-            return started.length > 0 ? Math.round((started.filter(b => b.flash).length / started.length) * 100) : 0;
-          })(),
+          flashRate: boulders.length > 0 ? Math.round((boulders.filter(b => b.flash).length / boulders.length) * 100) : 0,
           completionRate: (() => {
             const incompleteCount = boulders.filter(b => ['paused', 'closed'].includes(getProjectStatus(b))).length;
             const trackedCount = completed.length + incompleteCount;
