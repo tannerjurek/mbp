@@ -172,7 +172,7 @@
           auth.onAuthStateChanged((u) => {
             setUser(u);
             if (u) {
-              cloudDocPathRef.current = `boulder-tracker/users/${u.uid}`;
+              cloudDocPathRef.current = `users/${u.uid}`;
               cloudLoadedRef.current = false;
               setCloudEnabled(true);
             } else {
